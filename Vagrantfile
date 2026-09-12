@@ -27,6 +27,14 @@ Vagrant.configure("2") do |config|
       end
 
       machine.vm.provision "shell", path: "provision/common.sh"
+
+      if name == "pg-primary"
+        machine.vm.provision "shell",
+        path: "provision/primary.sh",
+        env: {
+          "PG_MONITORING_PASSWORD" => ENV.fetch("PG_MONITORING_PASSWORD", ""),
+        }
+      end
     end
   end
 end

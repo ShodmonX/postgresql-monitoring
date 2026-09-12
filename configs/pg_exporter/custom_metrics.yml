@@ -1,0 +1,295 @@
+# custom_metrics.yml
+# Compatible with pgsty/pg_exporter v1.4.1
+# Target PostgreSQL versions: 10+
+#
+# Logical collectors:
+#   1) pg_custom_setting  - extra tuning parameters not exported by stock pg_setting
+#   2) pg_custom_activity - sessions by database/user/state/wait event
+#   3) pg_custom_index    - per-index usage count + exact size in bytes
+#   4) pg_custom_query    - top query stats by calls/total/mean execution time
+#
+# Notes:
+# - Collector branch names are unique.
+# - pg_custom_query has version branches because pg_stat_statements renamed
+#   total_time/mean_time to total_exec_time/mean_exec_time in PostgreSQL 13.
+# - Query text is intentionally NOT exported as a Prometheus label.
+# - pg_custom_query requires pg_stat_statements to be installed in the
+#   database used by PG_EXPORTER_URL.
+
+# ---------------------------------------------------------------------------
+# 1. Additional tuning settings
+# ---------------------------------------------------------------------------
+pg_custom_setting:
+  name: pg_custom_setting
+  desc: Additional PostgreSQL tuning settings missing from stock pg_setting collector
+  query: |-
+    SELECT
+      pg_size_bytes(current_setting('wal_buffers', true)) AS wal_buffers,
+      current_setting('random_page_cost', true)::double precision AS random_page_cost,
+      current_setting('effective_io_concurrency', true)::double precision AS effective_io_concurrency,
+      current_setting('default_statistics_target', true)::double precision AS default_statistics_target;
+  ttl: 60
+  timeout: 0.5
+  min_version: 100000
+  tags: [cluster]
+  metrics:
+    - wal_buffers:
+        usage: GAUGE
+        description: WAL buffer size in bytes
+    - random_page_cost:
+        usage: GAUGE
+        description: Planner cost estimate for a non-sequentially fetched disk page
+    - effective_io_concurrency:
+        usage: GAUGE
+        description: Number of concurrent disk I/O operations PostgreSQL expects can be executed efficiently
+    - default_statistics_target:
+        usage: GAUGE
+        description: Default statistics target used by ANALYZE
+
+# ---------------------------------------------------------------------------
+# 2. Detailed pg_stat_activity collector
+# ---------------------------------------------------------------------------
+pg_custom_activity:
+  name: pg_custom_activity
+  desc: PostgreSQL backend activity grouped by database, user, state and wait event
+  query: |-
+    SELECT
+      COALESCE(datname, '_system') AS datname,
+      COALESCE(usename, '_system') AS usename,
+      COALESCE(state, 'unknown') AS state,
+      COALESCE(wait_event_type, 'Running') AS wait_event_type,
+      COALESCE(wait_event, 'Running') AS wait_event,
+      count(*)::bigint AS count
+    FROM pg_stat_activity
+    WHERE pid <> pg_backend_pid()
+    GROUP BY 1, 2, 3, 4, 5;
+  ttl: 10
+  timeout: 0.5
+  min_version: 100000
+  tags: [cluster]
+  metrics:
+    - datname:
+        usage: LABEL
+        description: Name of the database this backend is connected to
+    - usename:
+        usage: LABEL
+        description: PostgreSQL role name of the backend
+    - state:
+        usage: LABEL
+        description: Current overall state of the backend
+    - wait_event_type:
+        usage: LABEL
+        description: Wait event type, or Running when the backend is not waiting
+    - wait_event:
+        usage: LABEL
+        description: Specific wait event, or Running when the backend is not waiting
+    - count:
+        usage: GAUGE
+        description: Number of backends in this database/user/state/wait-event group
+
+# ---------------------------------------------------------------------------
+# 3. Per-index usage + exact size
+# ---------------------------------------------------------------------------
+pg_custom_index:
+  name: pg_custom_index
+  desc: PostgreSQL per-index usage count and exact on-disk index size
+  query: |-
+    SELECT
+      CURRENT_CATALOG AS datname,
+      schemaname,
+      relname,
+      indexrelname AS idxname,
+      idx_scan,
+      pg_relation_size(indexrelid) AS size_bytes
+    FROM pg_stat_user_indexes
+    WHERE schemaname !~ '^pg_'
+      AND schemaname !~ '^_'
+      AND schemaname !~ '^timescaledb'
+      AND schemaname !~ '^citus'
+      AND schemaname !~ '^columnar'
+      AND schemaname NOT IN ('pg_catalog', 'information_schema', 'pg_toast', 'repack', 'monitor');
+  ttl: 300
+  timeout: 5
+  min_version: 100000
+  metrics:
+    - datname:
+        usage: LABEL
+        description: Database name
+    - schemaname:
+        usage: LABEL
+        description: Schema name
+    - relname:
+        usage: LABEL
+        description: Table name
+    - idxname:
+        usage: LABEL
+        description: Index name
+    - idx_scan:
+        usage: COUNTER
+        description: Number of index scans initiated on this index
+    - size_bytes:
+        usage: GAUGE
+        description: Exact on-disk size of this index in bytes
+
+# ---------------------------------------------------------------------------
+# 4A. pg_stat_statements query stats for PostgreSQL 13+
+# ---------------------------------------------------------------------------
+pg_custom_query_13:
+  name: pg_custom_query
+  desc: Top PostgreSQL query statistics by calls, total execution time and mean execution time, PG13+
+  query: |-
+    WITH s AS (
+      SELECT
+        ps.dbid,
+        ps.userid,
+        ps.queryid,
+        ps.calls,
+        ps.total_exec_time,
+        ps.mean_exec_time
+      FROM pg_stat_statements(false) AS ps
+      WHERE ps.queryid IS NOT NULL
+        AND ps.userid <> (SELECT oid FROM pg_roles WHERE rolname = current_user)
+    ),
+    top_keys AS (
+      SELECT dbid, userid, queryid
+      FROM (
+        SELECT dbid, userid, queryid
+        FROM s
+        ORDER BY calls DESC
+        LIMIT 100
+      ) q_calls
+      UNION
+      SELECT dbid, userid, queryid
+      FROM (
+        SELECT dbid, userid, queryid
+        FROM s
+        ORDER BY total_exec_time DESC
+        LIMIT 100
+      ) q_total
+      UNION
+      SELECT dbid, userid, queryid
+      FROM (
+        SELECT dbid, userid, queryid
+        FROM s
+        ORDER BY mean_exec_time DESC
+        LIMIT 100
+      ) q_mean
+    )
+    SELECT
+      d.datname,
+      COALESCE(r.rolname, '_unknown') AS username,
+      s.queryid::text AS queryid,
+      s.calls,
+      s.total_exec_time,
+      s.mean_exec_time
+    FROM s
+    JOIN top_keys k USING (dbid, userid, queryid)
+    JOIN pg_database d ON d.oid = s.dbid
+    LEFT JOIN pg_roles r ON r.oid = s.userid;
+  ttl: 10
+  timeout: 3
+  min_version: 130000
+  tags: [cluster, "extension:pg_stat_statements"]
+  metrics:
+    - datname:
+        usage: LABEL
+        description: Database name
+    - username:
+        usage: LABEL
+        description: PostgreSQL role that executed the statement
+    - queryid:
+        usage: LABEL
+        description: Query identifier generated by PostgreSQL
+    - calls:
+        usage: COUNTER
+        description: Number of times the statement was executed
+    - total_exec_time:
+        usage: COUNTER
+        scale: 1e-3
+        description: Total execution time in seconds
+    - mean_exec_time:
+        usage: GAUGE
+        scale: 1e-3
+        description: Mean execution time in seconds
+
+# ---------------------------------------------------------------------------
+# 4B. pg_stat_statements query stats for PostgreSQL 10-12
+# ---------------------------------------------------------------------------
+pg_custom_query_10:
+  name: pg_custom_query
+  desc: Top PostgreSQL query statistics by calls, total execution time and mean execution time, PG10-12
+  query: |-
+    WITH s AS (
+      SELECT
+        ps.dbid,
+        ps.userid,
+        ps.queryid,
+        ps.calls,
+        ps.total_time AS total_exec_time,
+        ps.mean_time AS mean_exec_time
+      FROM pg_stat_statements(false) AS ps
+      WHERE ps.queryid IS NOT NULL
+        AND ps.userid <> (SELECT oid FROM pg_roles WHERE rolname = current_user)
+    ),
+    top_keys AS (
+      SELECT dbid, userid, queryid
+      FROM (
+        SELECT dbid, userid, queryid
+        FROM s
+        ORDER BY calls DESC
+        LIMIT 100
+      ) q_calls
+      UNION
+      SELECT dbid, userid, queryid
+      FROM (
+        SELECT dbid, userid, queryid
+        FROM s
+        ORDER BY total_exec_time DESC
+        LIMIT 100
+      ) q_total
+      UNION
+      SELECT dbid, userid, queryid
+      FROM (
+        SELECT dbid, userid, queryid
+        FROM s
+        ORDER BY mean_exec_time DESC
+        LIMIT 100
+      ) q_mean
+    )
+    SELECT
+      d.datname,
+      COALESCE(r.rolname, '_unknown') AS username,
+      s.queryid::text AS queryid,
+      s.calls,
+      s.total_exec_time,
+      s.mean_exec_time
+    FROM s
+    JOIN top_keys k USING (dbid, userid, queryid)
+    JOIN pg_database d ON d.oid = s.dbid
+    LEFT JOIN pg_roles r ON r.oid = s.userid;
+  ttl: 10
+  timeout: 3
+  min_version: 100000
+  max_version: 130000
+  tags: [cluster, "extension:pg_stat_statements"]
+  metrics:
+    - datname:
+        usage: LABEL
+        description: Database name
+    - username:
+        usage: LABEL
+        description: PostgreSQL role that executed the statement
+    - queryid:
+        usage: LABEL
+        description: Query identifier generated by PostgreSQL
+    - calls:
+        usage: COUNTER
+        description: Number of times the statement was executed
+    - total_exec_time:
+        usage: COUNTER
+        scale: 1e-3
+        description: Total execution time in seconds
+    - mean_exec_time:
+        usage: GAUGE
+        scale: 1e-3
+        description: Mean execution time in seconds
