@@ -87,6 +87,17 @@ host    all     monitoring    localhost    scram-sha-256
 EOF
 
 # ------------------------------------------------------------
+# Configure pg_stat_statements
+# ------------------------------------------------------------
+
+echo "==> Configuring pg_stat_statements"
+
+sudo -u postgres psql \
+  -d postgres \
+  -v ON_ERROR_STOP=1 \
+  -c "ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_statements';"
+
+# ------------------------------------------------------------
 # Apply configuration
 # ------------------------------------------------------------
 
@@ -119,6 +130,32 @@ if [[ "${PG_ISREADY}" != "true" ]]; then
 fi
 
 echo "==> PostgreSQL is accepting TCP connections"
+
+# ------------------------------------------------------------
+# Enable pg_stat_statements
+# ------------------------------------------------------------
+
+echo "==> Enabling pg_stat_statements"
+
+sudo -u postgres psql \
+  -d postgres \
+  -v ON_ERROR_STOP=1 \
+  -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"
+
+
+echo "==> Verifying pg_stat_statements"
+
+sudo -u postgres psql \
+  -d postgres \
+  -tAc "SHOW shared_preload_libraries;" \
+  | grep -qw 'pg_stat_statements'
+
+sudo -u postgres psql \
+  -d postgres \
+  -tAc "SELECT extname FROM pg_extension WHERE extname = 'pg_stat_statements';" \
+  | grep -qx 'pg_stat_statements'
+
+echo "==> pg_stat_statements is enabled"
 
 # ------------------------------------------------------------
 # Install pg_exporter
@@ -170,7 +207,8 @@ echo "==> Configuring systemd service for pg_exporter"
 
 systemctl daemon-reload
 
-sudo systemctl enable --now pg_exporter
+systemctl enable pg_exporter
+systemctl restart pg_exporter
 
 if ! systemctl is-active --quiet pg_exporter; then
   echo "ERROR: pg_exporter service is not running"
