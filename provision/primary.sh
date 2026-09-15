@@ -134,37 +134,33 @@ pg_exporter --version
 
 echo "==> pg_exporter installed"
 
-#------------------------------------------------------------
+# ------------------------------------------------------------
 # Configure pg_exporter
-#------------------------------------------------------------
+# ------------------------------------------------------------
 
 echo "==> Configuring pg_exporter"
 
+mkdir -p /etc/pg_exporter
+
+# Package-provided default collectors
+install -m 0640 -o root -g prometheus \
+  /etc/pg_exporter.yml \
+  /etc/pg_exporter/0000-default.yml
+
+# Project-specific custom collectors
+install -m 0640 -o root -g prometheus \
+  /vagrant/configs/pg_exporter/custom_metrics.yml \
+  /etc/pg_exporter/9000-custom_metrics.yml
+
 cat > /etc/default/pg_exporter <<EOF
 PG_EXPORTER_URL='postgresql://monitoring:${PG_MONITORING_PASSWORD}@127.0.0.1:5432/postgres?sslmode=disable'
-PG_EXPORTER_CONFIG=/etc/pg_exporter
+PG_EXPORTER_CONFIG='/etc/pg_exporter'
 PG_EXPORTER_AUTO_DISCOVERY=true
 PG_EXPORTER_EXCLUDE_DATABASE='template0,template1'
 EOF
 
 chown root:prometheus /etc/default/pg_exporter
 chmod 640 /etc/default/pg_exporter
-
-chown root:prometheus /etc/pg_exporter.yml
-chmod 640 /etc/pg_exporter.yml
-
-
-mkdir -p /etc/pg_exporter
-
-install -m 0644 \
-  /etc/pg_exporter.yml \
-  /etc/pg_exporter/0000-default.yml
-
-install -m 0644 \
-  /vagrant/configs/pg_exporter/custom_metrics.yml \
-  /etc/pg_exporter/9000-custom_metrics.yml
-
-echo "==> pg_exporter configured"
 
 #------------------------------------------------------------
 # Configure systemd service
