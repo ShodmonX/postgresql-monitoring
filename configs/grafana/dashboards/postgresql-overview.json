@@ -22,7 +22,7 @@
   "links": [],
   "panels": [
     {
-      "collapsed": true,
+      "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -75,7 +75,7 @@
           "id": 36,
           "maxDataPoints": 100,
           "options": {
-            "colorMode": "value",
+            "colorMode": "none",
             "graphMode": "none",
             "justifyMode": "auto",
             "orientation": "horizontal",
@@ -514,7 +514,7 @@
       "type": "row"
     },
     {
-      "collapsed": true,
+      "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -1734,7 +1734,7 @@
       "type": "row"
     },
     {
-      "collapsed": true,
+      "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -4720,7 +4720,7 @@
       "type": "timeseries"
     },
     {
-      "collapsed": true,
+      "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -4979,7 +4979,7 @@
       "type": "row"
     },
     {
-      "collapsed": true,
+      "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -5309,7 +5309,7 @@
     }
   ],
   "preload": false,
-  "refresh": "10s",
+  "refresh": "5s",
   "schemaVersion": 41,
   "tags": [
     "postgres",
@@ -5391,7 +5391,7 @@
     ]
   },
   "time": {
-    "from": "now-24h",
+    "from": "now-5m",
     "to": "now"
   },
   "timepicker": {},
