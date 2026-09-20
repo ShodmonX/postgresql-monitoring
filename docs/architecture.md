@@ -67,4 +67,4 @@ The exporter combines the package's default collectors with project-specific col
 | Prometheus | `192.168.167.210:9090` | Targets page and PromQL API/UI. |
 | Grafana | `192.168.167.210:3000` | PostgreSQL dashboard. |
 
-The PostgreSQL HBA rules added by provisioning allow the exporter role to connect from localhost. The Grafana and Prometheus endpoints are intended for access from the local host/private lab network.
+The PostgreSQL HBA rules added by provisioning allow the exporter role to connect from localhost. The Grafana and Prometheus endpoints are intended for access from the local host and private monitoring network.

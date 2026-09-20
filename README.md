@@ -1,8 +1,8 @@
-# PostgreSQL Monitoring Lab
+# PostgreSQL Monitoring Stack
 
-A reproducible PostgreSQL monitoring lab built with Vagrant, PostgreSQL 16, `pg_exporter`, Prometheus, and Grafana. It provisions two Ubuntu VMs, generates a `pgbench` workload, and visualizes PostgreSQL health, activity, query statistics, and database metrics.
+A reproducible PostgreSQL monitoring stack demo built with Vagrant, PostgreSQL 16, `pg_exporter`, Prometheus, and Grafana. It provisions two Ubuntu VMs, generates a `pgbench` workload, and visualizes PostgreSQL health, activity, query statistics, and database metrics.
 
-This repository is intended for local learning and demonstrations. It is not a production hardening guide.
+This repository demonstrates the monitoring stack in a local environment. It is not a production hardening guide.
 
 ## Architecture
 
@@ -172,11 +172,11 @@ To remove only the demo database and role while retaining the VMs, run `./script
 ├── provision/                   # VM setup scripts
 ├── scripts/                     # Workload, scenario, cleanup, and verification scripts
 ├── screenshots/                 # Dashboard evidence captures
-└── Vagrantfile                  # Two-VM local lab definition
+└── Vagrantfile                  # Two-VM monitoring stack definition
 ```
 
 ## Security and scope
 
 - Never commit `.secrets/`, credentials, or generated VM state.
-- The lab uses private-network endpoints and demonstration credentials supplied locally by the operator. Review authentication, TLS, firewall rules, secret handling, resource limits, and availability requirements before adapting it for shared or production use.
-- The exporter connection currently uses `sslmode=disable` on the local PostgreSQL VM. This is limited to the lab's VM-local connection.
+- The monitoring stack uses private-network endpoints and demonstration credentials supplied locally by the operator. Review authentication, TLS, firewall rules, secret handling, resource limits, and availability requirements before adapting it for shared or production use.
+- The exporter connection currently uses `sslmode=disable` on the local PostgreSQL VM. This is limited to the stack's VM-local connection.

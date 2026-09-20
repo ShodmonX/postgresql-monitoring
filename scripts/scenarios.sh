@@ -74,8 +74,6 @@ echo "    Session will remain idle in transaction for ${SCENARIO_DURATION}s"
 
 IDLE_PID=$!
 
-IDLE_PID=$!
-
 echo "    Started background session PID ${IDLE_PID}"
 echo "    Observe Grafana: Idle in Transaction / Connections Over Time"
 
